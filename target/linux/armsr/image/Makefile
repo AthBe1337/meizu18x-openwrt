@@ -102,7 +102,8 @@ define Device/generic
   GRUB2_VARIANT := generic
   FILESYSTEMS := ext4 squashfs
   UBOOT := $(if $(CONFIG_aarch64),qemu_armv8,qemu_armv7)
-  DEVICE_PACKAGES += kmod-amazon-ena kmod-e1000e kmod-vmxnet3 kmod-rtc-rx8025 \
+  DEVICE_PACKAGES += kmod-fs-vfat \
+	kmod-amazon-ena kmod-e1000e kmod-vmxnet3 kmod-rtc-rx8025 \
 	kmod-i2c-mux-pca954x kmod-gpio-pca953x partx-utils kmod-wdt-sp805 \
 	kmod-mvneta kmod-mvpp2 kmod-fsl-dpaa1-net kmod-fsl-dpaa2-net \
 	kmod-fsl-enetc-net kmod-dwmac-imx kmod-fsl-fec \
@@ -111,6 +112,98 @@ define Device/generic
 	kmod-bcmgenet kmod-octeontx2-net kmod-renesas-net-avb \
 	kmod-phy-realtek kmod-phy-smsc $(if $(CONFIG_aarch64),kmod-thunderx-net)
 endef
+ifneq ($(SUBTARGET),m2172)
 TARGET_DEVICES += generic
+endif
+
+define Build/m2172-check-build-inputs
+	@if [ "$(call qstrip,$(CONFIG_KERNEL_GIT_CLONE_URI))" != \
+		"https://github.com/meizu-m2172-mainline/linux.git" ]; then \
+		echo 'ERROR: meizu_m2172 requires the meizu-m2172-mainline HTTPS kernel repository' >&2; \
+		exit 1; \
+	fi
+	@if [ "$(call qstrip,$(CONFIG_KERNEL_GIT_REF))" != \
+		"8afab201fb9812de7da2144e68e53f08394a8a1b" ]; then \
+		echo 'ERROR: meizu_m2172 requires the pinned kernel commit 8afab201fb9812de7da2144e68e53f08394a8a1b' >&2; \
+		exit 1; \
+	fi
+	@if ! grep -q '^CONFIG_PACKAGE_m2172-kernel-modules=y$$' $(TOPDIR)/.config; then \
+		echo 'ERROR: meizu_m2172 requires m2172-kernel-modules' >&2; \
+		exit 1; \
+	fi
+	@if grep -E '^CONFIG_PACKAGE_.*(firmware|microcode).*=y$$' $(TOPDIR)/.config | \
+		grep -Ev '^CONFIG_PACKAGE_m2172-firmware=y$$' | grep -q .; then \
+		echo 'ERROR: meizu_m2172 must use only m2172-firmware:' >&2; \
+		grep -E '^CONFIG_PACKAGE_.*(firmware|microcode).*=y$$' $(TOPDIR)/.config | \
+			grep -Ev '^CONFIG_PACKAGE_m2172-firmware=y$$' >&2; \
+		exit 1; \
+	fi
+endef
+
+M2172_MKBOOTIMG:=/usr/local/bin/mkbootimg
+M2172_IMG2SIMG:=/usr/bin/img2simg
+M2172_BOOT_RAMDISK:=$(STAGING_DIR)/usr/share/m2172/initrd.cpio.gz
+M2172_DTB:=$(LINUX_DIR)/arch/arm64/boot/dts/qcom/sm8250-meizu-m2172-rm692e5.dtb
+M2172_BOOT_MAX_SIZE:=16777216
+
+define Build/m2172-android-boot
+	test -x $(M2172_MKBOOTIMG)
+	test -f $(KDIR)/Image.gz
+	test -f $(M2172_DTB)
+	test -f $(M2172_BOOT_RAMDISK)
+	cat $(KDIR)/Image.gz $(M2172_DTB) > $@.kernel-dtb
+	$(M2172_MKBOOTIMG) \
+		--base 0x00000000 \
+		--kernel_offset 0x00008000 \
+		--ramdisk_offset 0x01000000 \
+		--tags_offset 0x00000100 \
+		--pagesize 4096 \
+		--second_offset 0x00000000 \
+		--ramdisk $(M2172_BOOT_RAMDISK) \
+		--cmdline "console=tty0,115200n8 earlycon=tty0 earlyprintk root=/dev/sda17 rootfstype=ext4 rootwait=10 loglevel=3 debug rw" \
+		--kernel $@.kernel-dtb \
+		-o $@
+	rm -f $@.kernel-dtb
+	@test "$$(stat -c %s $@)" -le "$(M2172_BOOT_MAX_SIZE)" || { \
+		echo "ERROR: Android boot image exceeds $(M2172_BOOT_MAX_SIZE) bytes: $$(stat -c %s $@)" >&2; \
+		exit 1; \
+	}
+endef
+
+define Build/m2172-fsck-ext4
+	status=0; \
+		$(STAGING_DIR_HOST)/bin/e2fsck -pDf $@ || status=$$?; \
+		test "$$status" -le 1
+endef
+
+define Build/m2172-img2simg
+	test -x $(M2172_IMG2SIMG)
+	test -f $(BIN_DIR)/$(DEVICE_IMG_PREFIX)-ext4-rootfs.img
+	$(M2172_IMG2SIMG) \
+		$(BIN_DIR)/$(DEVICE_IMG_PREFIX)-ext4-rootfs.img \
+		$@
+endef
+
+# Linux, modules and Android boot image for the Meizu 18X pinned mainline
+# kernel.  m2172-kernel-modules installs every module produced by this tree;
+# selected OpenWrt kmod packages are empty dependency markers.
+define Device/meizu_m2172
+  DEVICE_VENDOR := Meizu
+  DEVICE_MODEL := 18X
+  DEVICE_VARIANT := m2172 mainline
+  DEVICE_PACKAGES :=
+  FILESYSTEMS := ext4
+  IMAGE/rootfs.img := m2172-check-build-inputs | append-rootfs | m2172-fsck-ext4
+  IMAGE/boot.img := m2172-check-build-inputs | m2172-android-boot
+  IMAGES := rootfs.img boot.img
+  ARTIFACTS := ext4-rootfs.simg
+  ARTIFACT/ext4-rootfs.simg := m2172-img2simg
+  KERNEL := kernel-bin
+  KERNEL_INSTALL := 1
+  SUPPORTED_DEVICES :=
+endef
+ifeq ($(SUBTARGET),m2172)
+TARGET_DEVICES += meizu_m2172
+endif
 
 $(eval $(call BuildImage))

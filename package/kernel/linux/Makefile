@@ -8,6 +8,16 @@
 include $(TOPDIR)/rules.mk
 include $(INCLUDE_DIR)/kernel.mk
 
+# The m2172 pinned kernel is shipped as one complete module package.  Keep
+# in-tree kmod packages as marker-only dependencies so firewall4, PPP and other
+# standard OpenWrt packages can be selected without duplicating .ko files.
+# Each marker package installs one harmless file so apk's package file list is
+# non-empty; LuCI applications such as Passwall use that list to detect whether
+# a dependency is installed.
+ifeq ($(CONFIG_TARGET_armsr_m2172),y)
+  KERNEL_PACKAGE_INSTALL_EMPTY:=1
+endif
+
 PKG_NAME:=kernel
 PKG_FLAGS:=hold
 
@@ -53,19 +63,21 @@ define Package/kernel
   CATEGORY:=Kernel
   DEFAULT:=y
   TITLE:=Virtual kernel package
-  VERSION:=$(LINUX_VERSION)~$(LINUX_VERMAGIC)-r$(LINUX_RELEASE)
+  VERSION:=$(LINUX_PACKAGE_VERSION)~$(LINUX_VERMAGIC)-r$(LINUX_RELEASE)
   URL:=http://www.kernel.org/
   PKG_FLAGS:=nonshared
 endef
 
 define Package/kernel/install
-	$(INSTALL_DIR) $(1)/$(MODULES_SUBDIR)
-	$(INSTALL_DATA) $(LINUX_DIR)/modules.builtin $(1)/$(MODULES_SUBDIR)
-	$(SED) 's,.*/,,' $(1)/$(MODULES_SUBDIR)/modules.builtin
-	strings $(LINUX_DIR)/modules.builtin.modinfo | \
-		grep -E -v "\.(file$(if CONFIG_MODULE_STRIPPED,|parmtype))=" | \
-		tr '\n' '\0' > $(1)/$(MODULES_SUBDIR)/modules.builtin.modinfo
-	echo $(LINUX_VERSION)~$(LINUX_VERMAGIC)-r$(LINUX_RELEASE) > $(STAGING_DIR)/kernel.version
+	if [ "$(CONFIG_PACKAGE_m2172-kernel-modules)" != "y" ]; then
+		$(INSTALL_DIR) $(1)/$(MODULES_SUBDIR)
+		$(INSTALL_DATA) $(LINUX_DIR)/modules.builtin $(1)/$(MODULES_SUBDIR)
+		$(SED) 's,.*/,,' $(1)/$(MODULES_SUBDIR)/modules.builtin
+		strings $(LINUX_DIR)/modules.builtin.modinfo | \
+			grep -E -v "\.(file$(if CONFIG_MODULE_STRIPPED,|parmtype))=" | \
+			tr '\n' '\0' > $(1)/$(MODULES_SUBDIR)/modules.builtin.modinfo
+	fi
+	echo $(LINUX_PACKAGE_VERSION)~$(LINUX_VERMAGIC)-r$(LINUX_RELEASE) > $(STAGING_DIR)/kernel.version
 endef
 
 define Package/kernel/extra_provides

@@ -644,6 +644,7 @@ $(eval $(call KernelPackage,fs-udf))
 define KernelPackage/fs-vfat
   SUBMENU:=$(FS_MENU)
   TITLE:=VFAT filesystem support
+  DEPENDS:=@!PACKAGE_m2172-kernel-modules
   KCONFIG:= \
 	CONFIG_FAT_FS \
 	CONFIG_VFAT_FS

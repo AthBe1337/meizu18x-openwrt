@@ -1,0 +1,7 @@
+#!/bin/sh
+
+[ "$ACTION" = "add" ] || exit 0
+[ -n "$MODALIAS" ] || exit 0
+[ "$(uname -r)" = "7.1.0+" ] || exit 0
+
+/usr/libexec/m2172-kmod/modprobe -qb "$MODALIAS" >/dev/null 2>&1

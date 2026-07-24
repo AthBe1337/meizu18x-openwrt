@@ -1,0 +1,78 @@
+#!/bin/sh /etc/rc.common
+
+START=09
+
+load_module()
+{
+	/usr/libexec/m2172-kmod/modprobe -qb "$1" >/dev/null 2>&1
+}
+
+start()
+{
+	[ "$(uname -r)" = "7.1.0+" ] || return 0
+
+	# OpenWrt has no udev coldplug pass. Resolve every modalias that already
+	# exists, while the hotplug helper handles devices created by these probes.
+	find /sys/devices -name modalias -type f -exec cat {} \; 2>/dev/null | \
+		sed '/^$/d' | sort -u | while IFS= read -r device_alias; do
+			load_module "$device_alias"
+		done
+
+	# These drivers either create a new bus after coldplug or bind devices that
+	# appear asynchronously. Loading them up front also makes modem and Wi-Fi
+	# bring-up independent of hotplug event timing.
+	for module in \
+		overlay \
+		bridge \
+		br_netfilter \
+		veth \
+		dummy \
+		macvlan \
+		vxlan \
+		tun \
+		pci_pwrctrl_pwrseq \
+		qcom_q6v5_pas \
+		ath11k_pci \
+		hci_uart \
+		mhi_pci_generic \
+		mhi_sahara \
+		mhi_wwan_ctrl \
+		mhi_wwan_mbim \
+		mhi_net \
+		rmnet \
+		qrtr_mhi \
+		nf_tables \
+		nft_ct \
+		nft_reject_inet \
+		nft_limit \
+		nft_log \
+		nft_nat \
+		nft_redir \
+		nft_fib_inet \
+		nft_chain_nat \
+		nft_masq \
+		nft_compat \
+		nft_socket \
+		nft_tproxy \
+		nf_flow_table_inet \
+		nft_flow_offload \
+		xt_addrtype \
+		xt_comment \
+		xt_conntrack \
+		xt_tcpudp \
+		xt_MASQUERADE \
+		xt_nat \
+		xt_multiport \
+		xt_mark \
+		xt_connmark \
+		netlink_diag \
+		udp_diag \
+		raw_diag \
+		ip_vs \
+		ip_vs_rr \
+		xt_ipvs \
+		xt_physdev \
+		rpmsg_char; do
+		load_module "$module"
+	done
+}

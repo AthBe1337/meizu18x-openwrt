@@ -1,0 +1,29 @@
+From: OpenWrt M2172 integration
+Subject: [PATCH] qcom-soc: split SDX55 rule results for generic backend
+
+When ModemManager is built without libudev, its generic kernel-device
+backend parses the installed udev rules itself.  That parser accepts one
+result per rule line, while udev itself accepts multiple assignments.
+
+Keep the default-QMAP and fixed-raw-IP mux tags as separate rules so both
+the full udev backend and the OpenWrt hotplug/generic backend apply them.
+
+---
+ src/plugins/qcom-soc/77-mm-qcom-soc.rules | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+--- a/src/plugins/qcom-soc/77-mm-qcom-soc.rules
++++ b/src/plugins/qcom-soc/77-mm-qcom-soc.rules
+@@ -31,8 +31,10 @@ ENV{ID_MM_PHYSDEV_UID}="qcom-soc"
+ 
+ # Prefer dynamic QMAP links on the SDX55. Keep the fixed mux hint for callers
+ # that explicitly request the main raw-IP interface without QMAP aggregation.
+-SUBSYSTEM=="net", KERNEL=="mhi_hwip0", ATTRS{vendor}=="0x17cb", ATTRS{device}=="0x0306", ATTRS{subsystem_vendor}=="0x17cb", ATTRS{subsystem_device}=="0x010c", ENV{ID_MM_QMI_DEFAULT_MULTIPLEX}="1", ENV{ID_MM_QMI_FIXED_MUX_ID}="1"
+-SUBSYSTEM=="net", KERNEL=="mhi_swip0", ATTRS{vendor}=="0x17cb", ATTRS{device}=="0x0306", ATTRS{subsystem_vendor}=="0x17cb", ATTRS{subsystem_device}=="0x010c", ENV{ID_MM_QMI_DEFAULT_MULTIPLEX}="1", ENV{ID_MM_QMI_FIXED_MUX_ID}="1"
++SUBSYSTEM=="net", KERNEL=="mhi_hwip0", ATTRS{vendor}=="0x17cb", ATTRS{device}=="0x0306", ATTRS{subsystem_vendor}=="0x17cb", ATTRS{subsystem_device}=="0x010c", ENV{ID_MM_QMI_DEFAULT_MULTIPLEX}="1"
++SUBSYSTEM=="net", KERNEL=="mhi_hwip0", ATTRS{vendor}=="0x17cb", ATTRS{device}=="0x0306", ATTRS{subsystem_vendor}=="0x17cb", ATTRS{subsystem_device}=="0x010c", ENV{ID_MM_QMI_FIXED_MUX_ID}="1"
++SUBSYSTEM=="net", KERNEL=="mhi_swip0", ATTRS{vendor}=="0x17cb", ATTRS{device}=="0x0306", ATTRS{subsystem_vendor}=="0x17cb", ATTRS{subsystem_device}=="0x010c", ENV{ID_MM_QMI_DEFAULT_MULTIPLEX}="1"
++SUBSYSTEM=="net", KERNEL=="mhi_swip0", ATTRS{vendor}=="0x17cb", ATTRS{device}=="0x0306", ATTRS{subsystem_vendor}=="0x17cb", ATTRS{subsystem_device}=="0x010c", ENV{ID_MM_QMI_FIXED_MUX_ID}="1"
+ 
+ # port type hints for the rpmsgexport-ed ports
+ SUBSYSTEM=="rpmsg", ATTR{name}=="DATA*", ATTR{name}=="*_CNTL", ENV{ID_MM_PORT_TYPE_QMI}="1"

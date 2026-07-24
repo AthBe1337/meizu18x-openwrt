@@ -1,0 +1,27 @@
+From: OpenWrt M2172 integration
+Subject: [PATCH] bearer-qmi: avoid dots in dynamic QMAP link names
+
+netifd interprets an unknown device name containing a dot as an implicit
+802.1Q VLAN.  Dynamic RMNET links are created after netifd starts, so a link
+named qmapmux0.0 may be resolved as VLAN 0 on a non-existent qmapmux0 parent
+when the protocol handler first reports it.
+
+Use an underscore separator for QMAP links.  The resulting qmapmux0_0 name
+continues to match the OpenWrt ModemManager hotplug qmapmux* pattern while it
+is handled as a regular device by netifd.
+
+---
+ src/mm-bearer-qmi.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+--- a/src/mm-bearer-qmi.c
++++ b/src/mm-bearer-qmi.c
+@@ -2539,7 +2539,7 @@ parse_settings (MMBearerQmi        *self,
+     if (ctx->multiplex == MM_BEARER_MULTIPLEX_SUPPORT_REQUESTED ||
+         ctx->multiplex == MM_BEARER_MULTIPLEX_SUPPORT_REQUIRED) {
+         /* The link prefix hint given must be modem-specific */
+-        ctx->link_prefix_hint = g_strdup_printf ("qmapmux%u.", mm_base_modem_get_dbus_id (MM_BASE_MODEM (modem)));
++        ctx->link_prefix_hint = g_strdup_printf ("qmapmux%u_", mm_base_modem_get_dbus_id (MM_BASE_MODEM (modem)));
+     }
+
+     /* If profile id is given, we'll launch the connection specifying the profile id in use

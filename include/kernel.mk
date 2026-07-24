@@ -55,6 +55,7 @@ else
   endif
 
   LINUX_KERNEL:=$(KERNEL_BUILD_DIR)/vmlinux
+  LINUX_PACKAGE_VERSION?=$(LINUX_VERSION)
 
   ifneq (,$(findstring -rc,$(LINUX_VERSION)))
       LINUX_SOURCE:=linux-$(LINUX_VERSION).tar.gz
@@ -213,8 +214,8 @@ define KernelPackage
     SECTION:=kernel
     CATEGORY:=Kernel modules
     DESCRIPTION:=$(DESCRIPTION)
-    EXTRA_DEPENDS:=kernel (=$(LINUX_VERSION)~$(LINUX_VERMAGIC)-r$(LINUX_RELEASE))
-    VERSION:=$(LINUX_VERSION)$(if $(PKG_VERSION),.$(PKG_VERSION))-r$(if $(PKG_RELEASE),$(PKG_RELEASE),$(LINUX_RELEASE))
+    EXTRA_DEPENDS:=kernel (=$(LINUX_PACKAGE_VERSION)~$(LINUX_VERMAGIC)-r$(LINUX_RELEASE))
+    VERSION:=$(LINUX_PACKAGE_VERSION)$(if $(PKG_VERSION),.$(PKG_VERSION))-r$(if $(PKG_RELEASE),$(PKG_RELEASE),$(LINUX_RELEASE))
     PKGFLAGS:=$(PKGFLAGS)
     $(call KernelPackage/$(1))
     $(call KernelPackage/$(1)/$(BOARD))
@@ -242,7 +243,13 @@ $(call KernelPackage/$(1)/config)
   $(call KernelPackage/depends)
   $(call KernelPackage/hooks)
 
-  ifneq ($(if $(filter-out %=y %=n %=m,$(KCONFIG)),$(filter m y,$(foreach c,$(call version_filter,$(filter-out %=y %=n %=m,$(KCONFIG))),$($(c)))),.),)
+  ifeq ($(KERNEL_PACKAGE_INSTALL_EMPTY),1)
+    define Package/kmod-$(1)/install
+		$$(INSTALL_DIR) $$(1)/usr/lib/kernel-package-markers
+		$$(INSTALL_DATA) /dev/null \
+			$$(1)/usr/lib/kernel-package-markers/kmod-$(1)
+    endef
+  else ifneq ($(if $(filter-out %=y %=n %=m,$(KCONFIG)),$(filter m y,$(foreach c,$(call version_filter,$(filter-out %=y %=n %=m,$(KCONFIG))),$($(c)))),.),)
     define Package/kmod-$(1)/install
 		  @for mod in $$(call version_filter,$$(FILES)); do \
 			if grep -q "$$$$$$$${mod##$(LINUX_DIR)/}" "$(LINUX_DIR)/modules.builtin"; then \

@@ -51,11 +51,14 @@ endif
 define Download/git-kernel
   URL:=$(call qstrip,$(CONFIG_KERNEL_GIT_CLONE_URI))
   PROTO:=git
-  SOURCE_VERSION:=$(CONFIG_KERNEL_GIT_REF)
+  SOURCE_VERSION:=$(call qstrip,$(CONFIG_KERNEL_GIT_REF))
   FILE:=$(LINUX_SOURCE)
+  HASH:=$(call qstrip,$(CONFIG_KERNEL_GIT_MIRROR_HASH))
   SUBDIR:=linux-$(LINUX_VERSION)
   OPTS:=$(KERNEL_GIT_OPTS)
 endef
+
+KERNEL_SOURCE_FILE:=$(if $(or $(LINUX_SITE),$(call qstrip,$(CONFIG_KERNEL_GIT_CLONE_URI))),$(DL_DIR)/$(LINUX_SOURCE))
 
 ifdef CONFIG_COLLECT_KERNEL_DEBUG
   define Kernel/CollectDebug
@@ -89,7 +92,7 @@ define BuildKernel
   .NOTPARALLEL:
 
   $(Kernel/Autoclean)
-  $(STAMP_PREPARED): $(if $(LINUX_SITE),$(DL_DIR)/$(LINUX_SOURCE))
+  $(STAMP_PREPARED): $(KERNEL_SOURCE_FILE)
 	-rm -rf $(KERNEL_BUILD_DIR)
 	-mkdir -p $(KERNEL_BUILD_DIR)
 	$(Kernel/Prepare)
@@ -151,7 +154,7 @@ define BuildKernel
   define BuildKernel
   endef
 
-  download: $(if $(LINUX_SITE),$(DL_DIR)/$(LINUX_SOURCE))
+  download: $(KERNEL_SOURCE_FILE)
   prepare: $(STAMP_PREPARED)
   compile: $(LINUX_DIR)/.modules
 	+$(MAKE) -C image compile TARGET_BUILD=

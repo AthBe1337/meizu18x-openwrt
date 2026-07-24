@@ -1,0 +1,8 @@
+#!/bin/sh /etc/rc.common
+
+START=99
+
+start() {
+	/usr/local/bin/mark-boot-successful.sh || \
+		logger -t mark-boot-successful "unable to mark the active slot successful"
+}

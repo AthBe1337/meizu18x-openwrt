@@ -1,0 +1,69 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+remove_stale_lan_port()
+{
+	local section="$1"
+	local name
+
+	config_get name "$section" name
+	[ "$name" = "br-lan" ] || return
+	uci -q delete "network.$section.ports"
+}
+
+# The generic armsr defaults reference a non-existent eth0.  Keep br-lan as the
+# AP bridge, but do not attach the independently configured usb0 debug link.
+config_load network
+config_foreach remove_stale_lan_port device
+
+uci -q batch <<'EOF'
+set network.lan.proto='static'
+set network.lan.device='br-lan'
+delete network.lan.ipaddr
+add_list network.lan.ipaddr='192.168.1.1/24'
+set network.lan.ip6assign='60'
+
+set network.wan='interface'
+set network.wan.proto='modemmanager'
+set network.wan.device='qcom-soc'
+set network.wan.apn='cmnet'
+set network.wan.iptype='ipv4v6'
+set network.wan.sourcefilter='0'
+set network.wan.allowedmode='5g|4g|3g|2g'
+set network.wan.preferredmode='5g'
+set network.wan.allow_roaming='1'
+set network.wan.force_connection='1'
+set network.wan.signalrate='30'
+set network.wan.metric='10'
+set network.wan.disable_modem='0'
+
+set wireless.radio0.band='5g'
+set wireless.radio0.channel='149'
+set wireless.radio0.htmode='HE80'
+set wireless.radio0.country='CN'
+delete wireless.radio0.disabled
+
+set wireless.default_radio0.device='radio0'
+set wireless.default_radio0.network='lan'
+set wireless.default_radio0.mode='ap'
+set wireless.default_radio0.ssid='Meizu18X-OpenWrt'
+set wireless.default_radio0.encryption='sae-mixed'
+set wireless.default_radio0.key='12345678'
+delete wireless.default_radio0.disabled
+
+# Keep the standalone USB link as a local management path.  Do not bridge it
+# into LAN and do not permit forwarding through it.
+set firewall.usb_debug='zone'
+set firewall.usb_debug.name='usb_debug'
+add_list firewall.usb_debug.device='usb0'
+set firewall.usb_debug.input='ACCEPT'
+set firewall.usb_debug.output='ACCEPT'
+set firewall.usb_debug.forward='REJECT'
+
+commit network
+commit wireless
+commit firewall
+EOF
+
+exit 0
