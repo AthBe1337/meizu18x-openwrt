@@ -1,24 +1,168 @@
-name: Create GitHub release
-
-permissions:
-  contents: write
+name: Build and release Meizu 18X image
 
 on:
   push:
     tags:
       - "v*"
-  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: meizu-m2172-release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  DEBIAN_FRONTEND: noninteractive
+  TZ: Asia/Shanghai
 
 jobs:
-  release:
+  build-and-release:
+    name: Build OpenWrt 25.12 for Meizu 18X
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
+      - name: Checkout tagged source
+        uses: actions/checkout@v4
 
-      - name: Release
-        uses: softprops/action-gh-release@v3
+      - name: Free runner disk space
+        run: |
+          sudo rm -rf \
+            /usr/local/lib/android \
+            /usr/local/lib/node_modules \
+            /usr/local/share/powershell \
+            /usr/share/dotnet \
+            /opt/ghc \
+            /opt/hostedtoolcache
+          df -h
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            bc \
+            build-essential \
+            bison \
+            ca-certificates \
+            clang \
+            cmake \
+            cpio \
+            curl \
+            device-tree-compiler \
+            file \
+            flex \
+            g++ \
+            g++-multilib \
+            gawk \
+            gcc-multilib \
+            gettext \
+            git \
+            kmod \
+            libelf-dev \
+            libncurses-dev \
+            libssl-dev \
+            libtool-bin \
+            libxml2-utils \
+            mkbootimg \
+            pkg-config \
+            python3 \
+            python3-pip \
+            python3-setuptools \
+            python3-venv \
+            rsync \
+            swig \
+            time \
+            unzip \
+            wget \
+            xz-utils \
+            zlib1g-dev \
+            zstd \
+            android-sdk-libsparse-utils
+          sudo ln -sf /usr/bin/mkbootimg /usr/local/bin/mkbootimg
+          command -v mkbootimg
+          command -v img2simg
+          command -v depmod
+
+      - name: Update and install feeds
+        run: |
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+      - name: Cache downloaded sources
+        uses: actions/cache@v4
         with:
-          draft: true
-          prerelease: true
+          path: dl
+          key: openwrt-m2172-dl-${{ hashFiles('feeds.conf.default', 'configs/meizu18x-rootfs.config', 'package/m2172/**', 'target/linux/armsr/m2172/**') }}
+          restore-keys: |
+            openwrt-m2172-dl-
+
+      - name: Configure Meizu 18X image
+        run: |
+          cp configs/meizu18x-rootfs.config .config
+          make defconfig
+          grep -E '^(CONFIG_TARGET_armsr_m2172|CONFIG_KERNEL_GIT_|CONFIG_PACKAGE_m2172-(firmware|initrd|kernel-modules))=' .config
+
+      - name: Download sources
+        run: make download -j"$(nproc)" || make download -j1 V=s
+
+      - name: Build image
+        run: make -j"$(nproc)" || make -j1 V=s
+
+      - name: Verify and collect release files
+        id: collect
+        env:
+          TARGET_DIR: bin/targets/armsr/m2172
+        run: |
+          set -eu
+          rootfs_simg="${TARGET_DIR}/openwrt-armsr-m2172-meizu_m2172-ext4-rootfs.simg"
+          boot_img="${TARGET_DIR}/openwrt-armsr-m2172-meizu_m2172-ext4-boot.img"
+          kernel_bin="${TARGET_DIR}/openwrt-armsr-m2172-meizu_m2172-kernel.bin"
+          rootfs_tar="${TARGET_DIR}/openwrt-armsr-m2172-meizu_m2172-rootfs.tar.gz"
+          manifest="${TARGET_DIR}/openwrt-armsr-m2172-meizu_m2172.manifest"
+
+          for file in "${rootfs_simg}" "${boot_img}" "${kernel_bin}" "${rootfs_tar}" "${manifest}"; do
+            test -s "${file}"
+          done
+
+          e2fsck_status=0
+          e2fsck -fn "${TARGET_DIR}/openwrt-armsr-m2172-meizu_m2172-ext4-rootfs.img" || e2fsck_status=$?
+          test "${e2fsck_status}" -le 1
+
+          release_dir="${RUNNER_TEMP}/meizu-m2172-release"
+          mkdir -p "${release_dir}"
+          cp "${rootfs_simg}" "${boot_img}" "${kernel_bin}" "${rootfs_tar}" "${manifest}" \
+            "${TARGET_DIR}/config.buildinfo" \
+            "${TARGET_DIR}/feeds.buildinfo" \
+            "${TARGET_DIR}/version.buildinfo" \
+            "${release_dir}/"
+          (
+            cd "${release_dir}"
+            sha256sum -- * > sha256sums
+          )
+          printf 'release_dir=%s\n' "${release_dir}" >> "${GITHUB_OUTPUT}"
+          du -h "${release_dir}"/*
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: meizu-m2172-${{ github.ref_name }}
+          path: ${{ steps.collect.outputs.release_dir }}
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          body: |
+            Meizu 18X (m2172) OpenWrt 25.12 mainline image.
+
+            The sparse rootfs is intended for the partition corresponding to `/dev/sda17`.
+            Verify the fastboot partition mapping before flashing and do not write other partitions.
+            The raw 9 GiB ext4 image is intentionally not attached because GitHub Release
+            assets have a per-file size limit. Reconstruct it locally with `simg2img` if needed.
+          files: |
+            ${{ steps.collect.outputs.release_dir }}/*
