@@ -78,7 +78,6 @@ jobs:
             zlib1g-dev \
             zstd \
             android-sdk-libsparse-utils
-          sudo ln -sf /usr/bin/mkbootimg /usr/local/bin/mkbootimg
           command -v mkbootimg
           command -v img2simg
           command -v depmod

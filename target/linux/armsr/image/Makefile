@@ -140,14 +140,14 @@ define Build/m2172-check-build-inputs
 	fi
 endef
 
-M2172_MKBOOTIMG:=/usr/local/bin/mkbootimg
-M2172_IMG2SIMG:=/usr/bin/img2simg
+M2172_MKBOOTIMG:=mkbootimg
+M2172_IMG2SIMG:=img2simg
 M2172_BOOT_RAMDISK:=$(STAGING_DIR)/usr/share/m2172/initrd.cpio.gz
 M2172_DTB:=$(LINUX_DIR)/arch/arm64/boot/dts/qcom/sm8250-meizu-m2172-rm692e5.dtb
 M2172_BOOT_MAX_SIZE:=16777216
 
 define Build/m2172-android-boot
-	test -x $(M2172_MKBOOTIMG)
+	command -v $(M2172_MKBOOTIMG)
 	test -f $(KDIR)/Image.gz
 	test -f $(M2172_DTB)
 	test -f $(M2172_BOOT_RAMDISK)
@@ -177,7 +177,7 @@ define Build/m2172-fsck-ext4
 endef
 
 define Build/m2172-img2simg
-	test -x $(M2172_IMG2SIMG)
+	command -v $(M2172_IMG2SIMG)
 	test -f $(BIN_DIR)/$(DEVICE_IMG_PREFIX)-ext4-rootfs.img
 	$(M2172_IMG2SIMG) \
 		$(BIN_DIR)/$(DEVICE_IMG_PREFIX)-ext4-rootfs.img \
